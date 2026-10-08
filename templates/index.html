@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PokeArbitrage Pro | 寶可夢珍貴卡牌比價雷達與撿漏獵手</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Font Awesome & Lucide Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="min-h-screen text-slate-100 flex flex-col">
+
+    <!-- 頂部導航列 (Top Navigation) -->
+    <header class="sticky top-0 z-50 glass-panel border-b border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                    <i class="fa-solid fa-bolt text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-black tracking-tight bg-gradient-to-r from-white via-indigo-200 to-amber-300 bg-clip-text text-transparent">
+                        PokeArbitrage <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">PRO</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">寶可夢保值神卡雷達・跨平台比價與即時下單</p>
+                </div>
+            </div>
+
+            <!-- 頂部即時狀態與全域掃描按鈕 -->
+            <div class="flex items-center gap-4">
+                <div id="scanStatusBadge" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span id="scanStatusText">定時排程運作中 (每 30 分鐘)</span>
+                </div>
+
+                <button id="btnTriggerScan" onclick="triggerFullScan()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 font-semibold text-xs text-white shadow-lg shadow-indigo-600/30 transition-all active:scale-95">
+                    <i class="fa-solid fa-arrows-rotate" id="scanIcon"></i>
+                    <span>立即全庫掃描</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 掃描進度指示條 (動態顯示) -->
+        <div id="scanProgressBarContainer" class="hidden w-full bg-slate-800 h-1 relative overflow-hidden">
+            <div id="scanProgressBar" class="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 transition-all duration-300 w-0"></div>
+        </div>
+    </header>
+
+    <!-- 主頁籤導覽 (Tabs) -->
+    <div class="bg-slate-900/90 border-b border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex overflow-x-auto custom-scrollbar gap-2 py-2">
+            <button onclick="switchTab('deals')" id="tab-deals" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-md shadow-indigo-600/20">
+                <i class="fa-solid fa-crosshairs text-amber-300"></i>
+                <span>🔥 撿漏雷達 (Deal Finder)</span>
+                <span id="superDealsCountBadge" class="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 font-black text-[10px]">0</span>
+            </button>
+            <button onclick="switchTab('encyclopedia')" id="tab-encyclopedia" class="tab-btn px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all flex items-center gap-2">
+                <i class="fa-solid fa-gem text-indigo-400"></i>
+                <span>💎 珍貴卡牌圖鑑 (四大板塊百科)</span>
+            </button>
+            <button onclick="switchTab('comparison')" id="tab-comparison" class="tab-btn px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all flex items-center gap-2">
+                <i class="fa-solid fa-chart-column text-emerald-400"></i>
+                <span>📊 跨平台價格矩陣 (Cardmarket/Mercari/eBay)</span>
+            </button>
+            <button onclick="switchTab('settings')" id="tab-settings" class="tab-btn px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all flex items-center gap-2">
+                <i class="fa-solid fa-sliders text-cyan-400"></i>
+                <span>⚙️ 掃描排程 & 帳號直達設定</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 主要內容區 -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- ================= 頁籤 1: 撿漏雷達 (DEALS TAB) ================= -->
+        <section id="panel-deals" class="tab-panel space-y-6">
+            <!-- 數據總覽橫條 (Key Metrics Cards) -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div class="glass-card rounded-2xl p-4 border border-slate-800">
+                    <p class="text-xs text-slate-400 mb-1">神價爆漏 (折扣 ≥ 30%)</p>
+                    <div class="flex items-baseline gap-2">
+                        <span id="metricSuperDeals" class="text-2xl font-black text-emerald-400">--</span>
+                        <span class="text-xs text-emerald-500 font-bold">高優先級搶購</span>
+                    </div>
+                </div>
+                <div class="glass-card rounded-2xl p-4 border border-slate-800">
+                    <p class="text-xs text-slate-400 mb-1">超值好價 (折扣 ≥ 15%)</p>
+                    <div class="flex items-baseline gap-2">
+                        <span id="metricGoodDeals" class="text-2xl font-black text-cyan-400">--</span>
+                        <span class="text-xs text-cyan-500 font-medium">適合入手</span>
+                    </div>
+                </div>
+                <div class="glass-card rounded-2xl p-4 border border-slate-800">
+                    <p class="text-xs text-slate-400 mb-1">平均價差折扣率</p>
+                    <div class="flex items-baseline gap-2">
+                        <span id="metricAvgDiscount" class="text-2xl font-black text-amber-400">--%</span>
+                        <span class="text-xs text-slate-400">對比市價</span>
+                    </div>
+                </div>
+                <div class="glass-card rounded-2xl p-4 border border-slate-800">
+                    <p class="text-xs text-slate-400 mb-1">最近掃描時間</p>
+                    <div class="flex items-baseline gap-2">
+                        <span id="metricLastScan" class="text-sm font-semibold text-slate-300">更新中...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 篩選器與工具列 -->
+            <div class="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+                <!-- 角色板塊快速切換 -->
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <button onclick="filterCategory('all')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white" data-cat="all">全部角色</button>
+                    <button onclick="filterCategory('charizard')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-cat="charizard">🔥 噴火龍</button>
+                    <button onclick="filterCategory('pikachu')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-cat="pikachu">⚡ 皮卡丘</button>
+                    <button onclick="filterCategory('umbreon')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-cat="umbreon">🌙 月亮伊布</button>
+                    <button onclick="filterCategory('female_trainers')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-cat="female_trainers">🎀 女性訓練家</button>
+                    <button onclick="filterCategory('other_grails')" class="cat-pill px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white" data-cat="other_grails">✨ 傳奇神獸</button>
+                </div>
+
+                <!-- 排序與等級篩選 -->
+                <div class="flex items-center gap-3">
+                    <select id="filterTier" onchange="loadDeals()" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500">
+                        <option value="all">所有折扣評級</option>
+                        <option value="SUPER_DEAL">🔥 僅看神價撿漏 (≥30%)</option>
+                        <option value="GOOD_DEAL">⭐ 僅看超值好價 (≥15%)</option>
+                        <option value="FAIR_PRICE">⚖️ 公道行情</option>
+                    </select>
+
+                    <select id="filterSort" onchange="loadDeals()" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500">
+                        <option value="discount">折扣幅度由大到小</option>
+                        <option value="savings_desc">現省金額最多</option>
+                        <option value="price_asc">即時價格由低到高</option>
+                    </select>
+
+                    <label class="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                        <input type="checkbox" id="chkExcludeSuspicious" checked onchange="loadDeals()" class="rounded bg-slate-800 border-slate-700 text-indigo-600 focus:ring-0">
+                        <span>過濾疑似假卡/空箱</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 賣家撿漏商品列表 (Card Grid) -->
+            <div id="dealsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- 動態注入商品卡片 -->
+            </div>
+
+            <!-- 無資料狀態 -->
+            <div id="noDealsState" class="hidden text-center py-16 glass-panel rounded-2xl">
+                <i class="fa-solid fa-radar text-4xl text-slate-600 mb-3"></i>
+                <p class="text-slate-400 text-sm">目前條件下無相應賣家商品，請點擊上方按鈕執行即時掃描！</p>
+            </div>
+        </section>
+
+
+        <!-- ================= 頁籤 2: 珍貴卡牌圖鑑 (ENCYCLOPEDIA TAB) ================= -->
+        <section id="panel-encyclopedia" class="tab-panel hidden space-y-6">
+            <div class="glass-panel rounded-2xl p-6 border border-slate-800">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <span>🏆 頂級保值卡牌百科與珍貴原因深度解析</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">
+                            根據 Yahoo 拍賣專家評析與國際拍賣行歷史紀錄，剖析四大板塊為何能作為資產長青藍籌。
+                        </p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="filterCardsView('all')" class="enc-pill px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white" data-enc="all">全部</button>
+                        <button onclick="filterCardsView('charizard')" class="enc-pill px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-400 hover:text-white" data-enc="charizard">噴火龍</button>
+                        <button onclick="filterCardsView('pikachu')" class="enc-pill px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-400 hover:text-white" data-enc="pikachu">皮卡丘</button>
+                        <button onclick="filterCardsView('umbreon')" class="enc-pill px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-400 hover:text-white" data-enc="umbreon">月亮伊布</button>
+                        <button onclick="filterCardsView('female_trainers')" class="enc-pill px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-400 hover:text-white" data-enc="female_trainers">女角訓練家</button>
+                    </div>
+                </div>
+
+                <div id="cardsEncyclopediaGrid" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- 動態注入每張保值神卡的深度介紹 -->
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ================= 頁籤 3: 跨平台價格矩陣 (COMPARISON TAB) ================= -->
+        <section id="panel-comparison" class="tab-panel hidden space-y-6">
+            <div class="glass-panel rounded-2xl p-6 border border-slate-800">
+                <h2 class="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-line text-emerald-400"></i>
+                    <span>跨平台行情橫向對照矩陣 (Cardmarket / Mercari / eBay)</span>
+                </h2>
+                <p class="text-xs text-slate-400 mb-6">
+                    統一將各平台幣別（歐元 EUR、日圓 JPY、美元 USD）依即時匯率換算為新台幣 (NTD)，方便一目了然比價與找出跨國套利空間。
+                </p>
+
+                <!-- 價格對比長條圖 -->
+                <div class="bg-slate-900/60 rounded-xl p-4 border border-slate-800 mb-6">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">各板塊核心標的跨市場價格對照 (TWD)</h3>
+                    <div class="h-72">
+                        <canvas id="comparisonChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- 橫向比價表格 -->
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left text-xs text-slate-300 border-collapse">
+                        <thead class="bg-slate-800/80 text-slate-400 uppercase text-[11px] font-bold">
+                            <tr>
+                                <th class="p-3">卡牌標的</th>
+                                <th class="p-3">板塊</th>
+                                <th class="p-3 text-right">市場行情基準 (TWD)</th>
+                                <th class="p-3 text-right text-emerald-400">Mercari 最低在售 (TWD)</th>
+                                <th class="p-3 text-right text-cyan-400">Cardmarket 趨勢價 (EUR/TWD)</th>
+                                <th class="p-3 text-right text-amber-400">eBay 近期均價 (USD/TWD)</th>
+                                <th class="p-3 text-center">PSA 10 拍賣天價紀錄</th>
+                                <th class="p-3 text-center">下單直達通道</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparisonTableBody" class="divide-y divide-slate-800">
+                            <!-- 動態注入表格 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ================= 頁籤 4: 系統設定與帳號設定 (SETTINGS TAB) ================= -->
+        <section id="panel-settings" class="tab-panel hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- 下單跳轉偏好與帳號橋接 -->
+                <div class="glass-panel rounded-2xl p-6 border border-slate-800 space-y-4">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-cart-shopping text-indigo-400"></i>
+                        <span>🛒 下單偏好與直達通道配置</span>
+                    </h3>
+                    <p class="text-xs text-slate-400">
+                        設定點擊「立即搶購 / 下單」時的優先直達目標。各按鈕皆附帶商品 ID，直接導向結帳與出價頁面。
+                    </p>
+
+                    <div class="space-y-3 pt-2">
+                        <label class="block text-xs font-semibold text-slate-300">預設搶購平台：</label>
+                        <select id="cfgPreferredPlatform" class="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2.5">
+                            <option value="tw_mercari">🇹🇼 台灣 Mercari (tw.mercari.com) - 繁體介面、官方超商取貨支援</option>
+                            <option value="jp_mercari">🇯🇵 日本 Mercari (jp.mercari.com) - 原生日本站、適合有日本集運地址者</option>
+                            <option value="buyee">📦 Buyee 代購直通車 (buyee.jp) - 海外代購一鍵下單通道</option>
+                        </select>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-700/60 text-xs text-slate-400 space-y-1">
+                        <p class="font-bold text-amber-400 flex items-center gap-1">
+                            <i class="fa-solid fa-shield-halved"></i> 帳號安全須知：
+                        </p>
+                        <p>為防範電商平台之 Cloudflare 與風控系統阻擋，本系統透過官方 Deep Link 秒速直通結帳頁，在您本人已登入的瀏覽器中直接刷卡搶購，保障 100% 帳號安全無封號風險。</p>
+                    </div>
+                </div>
+
+                <!-- 幣別與匯率設定 -->
+                <div class="glass-panel rounded-2xl p-6 border border-slate-800 space-y-4">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-money-bill-transfer text-emerald-400"></i>
+                        <span>💱 即時幣別與換算匯率</span>
+                    </h3>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">日圓 (JPY → TWD)</label>
+                            <input type="number" step="0.001" id="cfgJpyRate" class="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">美元 (USD → TWD)</label>
+                            <input type="number" step="0.1" id="cfgUsdRate" class="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">歐元 (EUR → TWD)</label>
+                            <input type="number" step="0.1" id="cfgEurRate" class="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2">
+                        </div>
+                    </div>
+
+                    <h3 class="text-base font-bold text-white flex items-center gap-2 pt-3">
+                        <i class="fa-solid fa-clock text-cyan-400"></i>
+                        <span>⏰ 背景定期定時掃描排程</span>
+                    </h3>
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1">
+                            <label class="block text-xs text-slate-400 mb-1">自動掃描間隔 (分鐘)</label>
+                            <input type="number" min="5" max="1440" id="cfgScanInterval" class="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2">
+                        </div>
+                        <div class="flex items-center gap-2 pt-5">
+                            <input type="checkbox" id="cfgAutoScanEnabled" class="rounded bg-slate-800 text-indigo-600">
+                            <label for="cfgAutoScanEnabled" class="text-xs text-slate-300">啟用背景定期掃描</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 即時推播警報設定 (Discord / Telegram / LINE) -->
+                <div class="glass-panel rounded-2xl p-6 border border-slate-800 lg:col-span-2 space-y-4">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-bell text-amber-400"></i>
+                        <span>🔔 撿漏即時推播通知整合 (Discord / Telegram)</span>
+                    </h3>
+                    <p class="text-xs text-slate-400">
+                        當背景定期掃描發現「神價爆漏」或「超值好價」時，立刻向您的手機或群組發送警報，附帶商品圖片與一鍵直達購買連結。
+                    </p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Discord Webhook URL：</label>
+                            <input type="url" id="cfgDiscordWebhook" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2.5">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Telegram Bot Token & Chat ID：</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <input type="text" id="cfgTgToken" placeholder="Bot Token" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2.5">
+                                <input type="text" id="cfgTgChatId" placeholder="Chat ID" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2.5">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between pt-4 border-t border-slate-800">
+                        <button onclick="saveSettings()" class="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-xs text-white shadow-lg shadow-indigo-600/30 transition-all">
+                            <i class="fa-solid fa-floppy-disk mr-1"></i> 儲存設定變更
+                        </button>
+                        <span id="settingsSaveStatus" class="text-xs text-emerald-400 hidden font-bold">✓ 設定已成功儲存！</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 頁尾 (Footer) -->
+    <footer class="border-t border-slate-800/80 py-4 text-center text-xs text-slate-500">
+        PokeArbitrage Pro &copy; 2026 寶可夢神卡價值情報與套利獵手・涵蓋 Mercari、Cardmarket、eBay、TCGPlayer
+    </footer>
+
+    <!-- 前端互動腳本 -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
